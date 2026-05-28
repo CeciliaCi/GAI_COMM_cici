@@ -12,3 +12,5 @@ results/*
 sync_files
 exclude_sync.txt
 **.DS_Store
+
+*.mat

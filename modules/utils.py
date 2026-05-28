@@ -1,6 +1,10 @@
 import numpy as np
 import torch
-import h5py
+
+try:
+    import h5py
+except ImportError:
+    h5py = None
 
 
 def crandn(*arg, rng=np.random.default_rng()):
@@ -18,9 +22,40 @@ def get_observation(h, snr, A=None):
         return y
 
 
-def load_or_create_data(ch_type='3gpp', n_path=1, n_antennas_rx=64, n_antennas_tx=1, n_train_ch=100_000, n_val_ch=10_000, n_test_ch=10_000, return_toep=False):
+def load_or_create_data(ch_type='3gpp', n_path=1, n_antennas_rx=64, n_antennas_tx=1, n_train_ch=100_000,
+                        n_val_ch=10_000, n_test_ch=10_000, return_toep=False, data_dir='dataset',
+                        scenario=None, los=None, height_km=None, elevation=None, seeds=None,
+                        split_ratios=(0.8, 0.1, 0.1), shuffle=True, random_seed=453451):
+    ch_type_lower = ch_type.lower()
+    if ch_type_lower.startswith('leo'):
+        from loaders import load_leo_data_splits
+
+        data_train, data_val, data_test = load_leo_data_splits(
+            data_dir=data_dir,
+            scenario=scenario,
+            los=los,
+            height_km=height_km,
+            elevation=elevation,
+            num_paths=n_path,
+            seeds=seeds,
+            n_train=n_train_ch,
+            n_val=n_val_ch,
+            n_test=n_test_ch,
+            split_ratios=split_ratios,
+            shuffle=shuffle,
+            seed=random_seed,
+        )
+        if return_toep:
+            return data_train, None, data_val, None, data_test, None
+        return data_train, data_val, data_test
     n_channels = n_train_ch + n_val_ch + n_test_ch
     if ch_type.startswith('quadriga'):
+        if h5py is None:
+            raise ImportError(
+                "Reading QuaDRiGa MATLAB 7.3 files requires h5py. Install it with "
+                "`conda install -n dmce -c conda-forge h5py` or "
+                "`python -m pip install --only-binary=:all: h5py`."
+            )
         print('Load channels...')
         if n_antennas_tx == 1:
             channels = h5py.File(

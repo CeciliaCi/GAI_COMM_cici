@@ -6,17 +6,17 @@ channels:
   - nvidia
   - defaults
 dependencies:
-  - anaconda::python=3.10.9
-  - conda-forge::cudatoolkit=11.8
+  - python=3.10.9
+  - cudatoolkit=11.8  # conda-forge 会自动选择合适版本
   - pytorch::pytorch=2.0.1
-  - pytorch-cuda=11.8
-  - pytorch::torchvision=0.15.2=py310_cu118
-  - anaconda::conda-build
-  - anaconda::matplotlib
-  - anaconda::numpy
-  - anaconda::scipy
-  - anaconda::scikit-learn
-  - anaconda::tqdm
-  - anaconda::pip
+  - pytorch::pytorch-cuda=11.8
+  - conda-build
+  - matplotlib
+  - numpy<2
+  - scipy
+  - h5py
+  - scikit-learn
+  - tqdm
+  - pip
   - pip:
-    - pytorch-fid==0.3.*
+    - pytorch-fid==0.3.0

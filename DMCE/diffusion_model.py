@@ -1059,6 +1059,9 @@ class Tester(object):
                  return_all_timesteps: bool = False,
                  fft_pre: bool = False,
                  mode: str = '1D',
+                 snr_min_db: float = -15,
+                 snr_max_db: float = 20,
+                 snr_step_db: float = 5,
                  ):
         """
         Tester class for a DiffusionModel instance. Implements functions for different testing criteria, which are all
@@ -1075,6 +1078,10 @@ class Tester(object):
         criteria : list or Tuple {'nmse'}
             the criteria that should be tested
         """
+        if snr_step_db <= 0:
+            raise ValueError('snr_step_db must be positive.')
+        if snr_max_db < snr_min_db:
+            raise ValueError('snr_max_db must be greater than or equal to snr_min_db.')
 
         self.model = model
         self.device = self.model.device
@@ -1082,6 +1089,9 @@ class Tester(object):
         self.return_all_timesteps = return_all_timesteps
         self.fft_pre = fft_pre
         self.mode = mode
+        self.snr_min_db = float(snr_min_db)
+        self.snr_max_db = float(snr_max_db)
+        self.snr_step_db = float(snr_step_db)
 
         # prepare test data
         self.num_samples, *data_shape = data.shape
@@ -1128,9 +1138,9 @@ class Tester(object):
     @torch.no_grad()
     def _test_nmse(self) -> dict:
         """
-        Test function for the NMSE criterion. For different SNR values between -20 and 40 dB, the test data is corrupted
-        with noise and the DiffusionModel estimates the original data from the noisy input. For each SNR value, the MSE
-        normalized per sample and by the average power of the whole dataset is calculated.
+        Test function for the NMSE criterion. For the configured SNR values, the test data is corrupted with noise and
+        the DiffusionModel estimates the original data from the noisy input. For each SNR value, the MSE normalized per
+        sample and by the average power of the whole dataset is calculated.
 
         Returns
         -------
@@ -1139,8 +1149,12 @@ class Tester(object):
         """
 
         # specify which SNRs should be evaluated
-        snr_db_range = torch.arange(-10, 45, 5, dtype=torch.float32, device=self.device)
-        #snr_db_range = torch.arange(20, 30, 5, dtype=torch.float32, device=self.device)
+        n_snr_steps = int(math.floor((self.snr_max_db - self.snr_min_db) / self.snr_step_db)) + 1
+        snr_db_range = self.snr_min_db + self.snr_step_db * torch.arange(
+            n_snr_steps,
+            dtype=torch.float32,
+            device=self.device,
+        )
         snr_range = 10 ** (snr_db_range / 10)
 
         #nmse_per_sample_list = []
@@ -1232,4 +1246,3 @@ class Early_stopping:
             return True
         else:
             return False
-
