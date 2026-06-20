@@ -11,7 +11,7 @@
 ## 程序入口
 `diff_cnn.py`是训练与评估的主入口文件。默认配置沿用论文中的3GPP标准设置。传入参数`--channel-type leo`可启用低轨卫星数据加载器，默认使用`16×144`的天线维度，自动聚合所有匹配文件、打乱数据顺序，并按照`--split-ratios`参数划分数据集；若手动指定`--train-samples`（训练样本数）、`--val-samples`（验证样本数）和`--test-samples`（测试样本数），则优先使用手动配置。
 
-若需要严格按文件划分训练、验证和评估数据，可传入`--train-files`、`--val-files`和`--test-files`。例如Urban双seed实验中，`dataset/LEO_Urban_seed1111.mat`只用于训练，`dataset/LEO_Urban_seed2222.mat`用于验证；如果省略`--test-files`，验证文件会同时作为最终NMSE评估数据。指定文件模式下不会再执行多文件聚合后的随机混合切分，并会使用训练集平均元素功率因子统一归一化训练、验证和测试信道；实际文件路径、样本数量、归一化因子和NMSE评估SNR范围会写入`sim_params.json`与`results/dm_est/*_params.csv`。Diffusion NMSE默认评估范围为`[-15, 20] dB`，步长为`5 dB`，可通过`--snr-min-db`、`--snr-max-db`和`--snr-step-db`调整。
+若需要严格按文件划分训练、验证和评估数据，可传入`--train-files`、`--val-files`和`--test-files`。例如Urban双seed实验中，`dataset/LEO_Urban_seed1111.mat`只用于训练，`dataset/LEO_Urban_seed2222.mat`用于验证；如果省略`--test-files`，验证文件会同时作为最终NMSE评估数据。指定文件模式下不会再执行多文件聚合后的随机混合切分，并会使用训练集平均元素功率因子统一归一化训练、验证和测试信道；实际文件路径、样本数量、归一化因子和NMSE评估SNR范围会写入`sim_params.json`与`results/dm_est/*_params.csv`。`--data-preset p006`提供`dataset/p006`的固定文件级验证配置：`seed1111`用于训练，`seed2222`用于验证和测试。Diffusion NMSE默认评估范围为`[-15, 20] dB`，步长为`5 dB`，可通过`--snr-min-db`、`--snr-max-db`和`--snr-step-db`调整。
 
 `loaders.py`也可直接独立运行，用于检索匹配的低轨卫星数据文件、打印信道维度和解析后的物理元数据，并验证角域变换的往返误差。
 

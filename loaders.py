@@ -457,11 +457,15 @@ def _read_hdf5_node(node: Any, h5_file: Any) -> Any:
     data = node[()]
     ref_type = h5py.check_dtype(ref=node.dtype)
     if ref_type is not None:
-        refs = np.asarray(data).reshape(-1)
-        values = [_read_hdf5_node(h5_file[ref], h5_file) for ref in refs if ref]
-        if np.asarray(data).size == 1:
-            return values[0] if values else None
-        return np.asarray(values, dtype=object).reshape(np.asarray(data).shape)
+        refs = np.asarray(data)
+        if refs.size == 1:
+            ref = refs.reshape(-1)[0]
+            return _read_hdf5_node(h5_file[ref], h5_file) if ref else None
+
+        values = np.empty(refs.shape, dtype=object)
+        for index, ref in np.ndenumerate(refs):
+            values[index] = _read_hdf5_node(h5_file[ref], h5_file) if ref else None
+        return values
 
     if getattr(data, "dtype", None) is not None and data.dtype.names:
         names = set(data.dtype.names)

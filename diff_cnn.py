@@ -6,19 +6,33 @@ import os
 import os.path as path
 import argparse
 import modules.utils as ut
+import modules.result_io as result_io
 import datetime
-import csv
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
 from DMCE.utils import cmplx2real
 from loaders import Channels
+from modules.presets import DATASET_PRESETS, get_dataset_preset
 
 CUDA_DEFAULT_ID = 0
 
 
 def load_leo_files(files):
     return Channels(files=files, strict_dtype=True).channels
+
+
+def apply_data_preset(args):
+    if args.data_preset is None:
+        return
+    if args.train_files or args.val_files or args.test_files:
+        raise ValueError('--data-preset cannot be combined with --train-files/--val-files/--test-files.')
+
+    preset = get_dataset_preset(args.data_preset)
+    args.channel_type = preset.channel_type
+    args.train_files = list(preset.train_files)
+    args.val_files = list(preset.val_files)
+    args.test_files = list(preset.test_files) if preset.test_files is not None else None
 
 
 def convert_complex_channels(data):
@@ -50,9 +64,16 @@ def main():
     parser.add_argument('--train-files', nargs='+', default=None, type=str)
     parser.add_argument('--val-files', nargs='+', default=None, type=str)
     parser.add_argument('--test-files', nargs='+', default=None, type=str)
+    parser.add_argument(
+        '--data-preset',
+        choices=sorted(DATASET_PRESETS),
+        default=None,
+        help='Use a predefined dataset split with seed1111 as train and seed2222 as val/test.',
+    )
 
     # get the used device
     args = parser.parse_args()
+    apply_data_preset(args)
     device = args.device
 
     date_time_now = datetime.datetime.now()
@@ -153,6 +174,7 @@ def main():
     # set data params
     cwd = os.getcwd()
     bin_dir = path.join(cwd, 'bin')
+    results_root = path.join(cwd, 'results')
     data_shape = tuple(data_train.shape[1:])
 
     # data parameter dictionary, which is saved in 'sim_params.json'
@@ -168,6 +190,7 @@ def main():
         'val_files': val_files,
         'test_files': test_files,
         'test_uses_val_files': test_uses_val_files,
+        'data_preset': args.data_preset,
         'power_normalization_factor': power_normalization_factor,
         'n_antennas': n_dim,
         'n_antennas_tx': n_dim2,
@@ -272,9 +295,21 @@ def main():
     use_fixed_gen_noise = True
     use_ray = False
     save_mode = 'best' # newest, all
-    dir_result = path.join(cwd, 'results')
     timestamp = utils.get_timestamp()
-    dir_result = path.join(dir_result, timestamp)
+    run_name = result_io.build_run_name(
+        timestamp,
+        ch_type=ch_type,
+        is_leo=is_leo,
+        file_split_mode=file_split_mode,
+        args=args,
+        train_files=train_files,
+        val_files=val_files,
+        test_files=test_files,
+        test_uses_val_files=test_uses_val_files,
+        n_path=n_path,
+    )
+    dir_result = path.join(results_root, run_name)
+    run_index_path = path.join(results_root, 'runs_index.csv')
 
     # Trainer parameter dictionary, which is saved in 'sim_params.json'
     trainer_dict = {
@@ -328,7 +363,11 @@ def main():
     print(f'Number of trainable model parameters: {diffusion_model.num_parameters}')
 
     # other parameters dictionary, which is saved in 'sim_params.json'
-    misc_dict = {'num_parameters': diffusion_model.num_parameters}
+    misc_dict = {
+        'num_parameters': diffusion_model.num_parameters,
+        'run_name': run_name,
+        'run_index_file': path.relpath(run_index_path, cwd),
+    }
 
     # save the simulation parameters as a JSON file
     sim_dict = {
@@ -346,63 +385,38 @@ def main():
     train_dict = trainer.train()
     utils.save_params(dir_result=dir_result, filename='train_results', params=train_dict)
 
-    params = dict()
-    params['dim'] = n_dim
-    params['dim2'] = n_dim2
-    params['data_train'] = num_train_samples
-    params['data_test'] = num_test_samples
-    params['data_val'] = num_val_samples
-    params['epochs'] = num_epochs
-    params['batch_size'] = batch_size
-    params['lr_start'] = lr_init
-    params['lr_step_mult'] = lr_step_multiplier
-    params['epochs_until_lr_step'] = epochs_until_lr_step
-    params['timesteps'] = num_timesteps
-    params['beta_start'] = beta_start
-    params['beta_end'] = beta_end
-    params['snr_low'] = diffusion_model.snrs_db.cpu().detach().numpy()[-1]
-    params['snr_high'] = diffusion_model.snrs_db.cpu().detach().numpy()[0]
-    params['eval_snr_min_db'] = args.snr_min_db
-    params['eval_snr_max_db'] = args.snr_max_db
-    params['eval_snr_step_db'] = args.snr_step_db
-    params['dataset_train'] = ch_type
-    params['dataset_test'] = ch_type
-    params['file_split_mode'] = file_split_mode
-    params['train_files'] = train_files
-    params['val_files'] = val_files
-    params['test_files'] = test_files
-    params['test_uses_val_files'] = test_uses_val_files
-    params['power_normalization_factor'] = power_normalization_factor
-    params['schedule'] = which_schedule
-    params['kernel_size'] = kernel_size
-    params['timestamp'] = timestamp
-    params['trained_epochs'] = train_dict['trained_epochs']
-    params['num_min_epochs'] = num_min_epochs
-    params['num_epochs_no_improve'] = num_epochs_no_improve
-    params['loss_weighting'] = loss_weighting
-    params['n_layers_pre'] = n_layers_pre
-    params['ch_layers_pre'] = ch_layers_pre
-    params['n_layers_post'] = n_layers_post
-    params['ch_layers_post'] = ch_layers_post
-    params['n_layers_time'] = n_layers_time
-    params['ch_init_time'] = ch_init_time
-    params['num_learnable_params'] = diffusion_model.num_parameters
-    params['fft_pre'] = fft_pre
-    params['batch_norm'] = batch_norm
-    params['downsamp_fac'] = downsamp_fac
+    dm_est_dir = path.join(results_root, 'dm_est')
+    params = result_io.build_dm_est_params(
+        data_dict=data_dict,
+        diff_model_dict=diff_model_dict,
+        cnn_dict=cnn_dict,
+        trainer_dict=trainer_dict,
+        tester_dict=tester_dict,
+        train_dict=train_dict,
+        ch_type=ch_type,
+        timestamp=timestamp,
+        run_name=run_name,
+        dir_result=dir_result,
+        cwd=cwd,
+        seed=seed,
+        snrs_db=diffusion_model.snrs_db.cpu().detach().numpy(),
+        num_parameters=diffusion_model.num_parameters,
+    )
+    dm_est_params_csv_path = result_io.dm_est_params_path(
+        dm_est_dir,
+        date_time=date_time,
+        ch_type=ch_type,
+        n_dim=n_dim,
+        n_dim2=n_dim2,
+        num_val_samples=num_val_samples,
+        num_timesteps=num_timesteps,
+    )
+    result_io.write_key_value_csv(dm_est_params_csv_path, params)
 
-    params['seed'] = seed
-    os.makedirs('./results/dm_est/', exist_ok=True)
-    file_name = f'./results/dm_est/{date_time}_{ch_type}_dim={n_dim}x{n_dim2}_valdata={num_val_samples}_' \
-                f'T={num_timesteps}_params.csv'
-    with open(file_name, 'w') as csv_file:
-        writer = csv.writer(csv_file)
-        for key, value in params.items():
-           writer.writerow([key, value])
-
-
-    file_name = f'./results/dm_est/{date_time}_{ch_type}_dim={n_dim}x{n_dim2}_valdata={num_val_samples}_' \
-                f'T={num_timesteps}_loss.png'
+    loss_plot_path = path.join(
+        dm_est_dir,
+        f'{date_time}_{ch_type}_dim={n_dim}x{n_dim2}_valdata={num_val_samples}_T={num_timesteps}_loss.png',
+    )
     plt.figure()
     plt.semilogy(range(1, len(train_dict['train_losses'])+1), train_dict['train_losses'], label='train-loss')
     plt.semilogy(range(1, len(train_dict['val_losses'])+1), train_dict['val_losses'], label='val-loss')
@@ -410,15 +424,17 @@ def main():
     plt.legend(['train-loss', 'val-loss'])
     plt.xlabel('Epoch')
     plt.ylabel('Loss')
-    plt.savefig(file_name)
+    plt.savefig(loss_plot_path)
 
     # run testing routine
     test_dict = tester.test()
 
     if return_all_timesteps:
         # plot all curves
-        file_name = f'./results/dm_est/{date_time}_{ch_type}_dim={n_dim}x{n_dim2}_valdata={num_val_samples}_' \
-                    f'T={num_timesteps}_perstep.png'
+        file_name = path.join(
+            dm_est_dir,
+            f'{date_time}_{ch_type}_dim={n_dim}x{n_dim2}_valdata={num_val_samples}_T={num_timesteps}_perstep.png',
+        )
         plt.figure()
         lines = []
         for isnr in range(len(test_dict[criteria[0]]['NMSEs_total_power'])):
@@ -434,35 +450,59 @@ def main():
         plt.savefig(file_name)
 
         # save all mses
-        mse_list = list()
-        mse_list.append(test_dict[criteria[0]]['SNRs'].copy())
-        mse_list[-1].insert(0, 'SNR')
-        mse_list.append(test_dict[criteria[0]]['NMSEs_total_power'].copy())
-        mse_list[-1].insert(0, 'nmse_dm')
-        mse_list = [list(i) for i in zip(*mse_list)]
+        mse_list = result_io.nmse_table(test_dict, criteria[0])
         print(mse_list)
-        file_name = f'./results/dm_est/{date_time}_{ch_type}_dim={n_dim}x{n_dim2}_valdata={num_val_samples}_T={num_timesteps}_perstep.csv'
-        with open(file_name, 'w') as myfile:
-            wr = csv.writer(myfile, lineterminator='\n')
-            wr.writerows(mse_list)
+        file_name = result_io.dm_est_csv_path(
+            dm_est_dir,
+            date_time=date_time,
+            ch_type=ch_type,
+            n_dim=n_dim,
+            n_dim2=n_dim2,
+            num_val_samples=num_val_samples,
+            num_timesteps=num_timesteps,
+            perstep=True,
+        )
+        result_io.write_rows_csv(file_name, mse_list)
 
         # remove all mses except last to save it later
         for isnr in range(len(test_dict[criteria[0]]['NMSEs_total_power'])):
             test_dict[criteria[0]]['NMSEs_total_power'][isnr] = test_dict[criteria[0]]['NMSEs_total_power'][isnr][-1]
 
-    mse_list = list()
-    mse_list.append(test_dict[criteria[0]]['SNRs'].copy())
-    mse_list[-1].insert(0, 'SNR')
-    mse_list.append(test_dict[criteria[0]]['NMSEs_total_power'].copy())
-    mse_list[-1].insert(0, 'nmse_dm')
-    mse_list = [list(i) for i in zip(*mse_list)]
+    mse_list = result_io.nmse_table(test_dict, criteria[0])
     print(mse_list)
-    file_name = f'./results/dm_est/{date_time}_{ch_type}_dim={n_dim}x{n_dim2}_valdata={num_val_samples}_T={num_timesteps}.csv'
-    with open(file_name, 'w') as myfile:
-        wr = csv.writer(myfile, lineterminator='\n')
-        wr.writerows(mse_list)
+    dm_est_csv_path = result_io.dm_est_csv_path(
+        dm_est_dir,
+        date_time=date_time,
+        ch_type=ch_type,
+        n_dim=n_dim,
+        n_dim2=n_dim2,
+        num_val_samples=num_val_samples,
+        num_timesteps=num_timesteps,
+    )
+    result_io.write_rows_csv(dm_est_csv_path, mse_list)
 
     utils.save_params(dir_result=dir_result, filename='test_results', params=test_dict)
+
+    result_io.append_completed_run_index(
+        index_path=run_index_path,
+        cwd=cwd,
+        run_name=run_name,
+        dir_result=dir_result,
+        timestamp=timestamp,
+        args=args,
+        n_path=n_path,
+        data_dict=data_dict,
+        diff_model_dict=diff_model_dict,
+        trainer_dict=trainer_dict,
+        tester_dict=tester_dict,
+        train_dict=train_dict,
+        test_dict=test_dict,
+        criterion=criteria[0],
+        num_parameters=diffusion_model.num_parameters,
+        dm_est_csv_path_value=dm_est_csv_path,
+        dm_est_params_csv_path_value=dm_est_params_csv_path,
+        loss_plot_path=loss_plot_path,
+    )
 
 
 if __name__ == '__main__':
