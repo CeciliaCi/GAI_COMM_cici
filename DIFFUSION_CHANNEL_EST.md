@@ -15,6 +15,8 @@
 
 `loaders.py`也可直接独立运行，用于检索匹配的低轨卫星数据文件、打印信道维度和解析后的物理元数据，并验证角域变换的往返误差。
 
+`scripts/analyze_angular_concentration.py`用于比较不同LEO数据集在角域中的能量集中程度。脚本对空间域信道执行酉二维FFT，按每个样本的角域能量占比计算top-k能量比例、effective bins，以及达到90%/95%能量所需的角域bin数量，用于判断Urban与DenseUrban等场景的角域结构差异。
+
 `baselines.py`默认从`dataset`目录加载低轨卫星Rural场景数据，并使用`16×144`天线维度评估LS与角域对角LMMSE基线。角域对角LMMSE先对信道执行酉二维FFT，再按每个角域bin的训练集功率方差进行逐元素LMMSE收缩，适合大规模天线和有限训练样本的LEO信道。基线评估前会按训练集平均元素功率对信道进行归一化，使AWGN噪声的SNR定义与归一化信道假设一致；如需旧的全协方差LMMSE，可传入`--lmmse-mode global_full`，如需直接使用物理幅度，可传入`--no-normalize-power`。可通过`--scenario Urban`或`--scenario DenseUrban`切换到其他低轨卫星场景。
 
 ---

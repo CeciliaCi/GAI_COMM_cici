@@ -282,7 +282,7 @@ def main():
 
     # set Trainer params
     batch_size = 128
-    lr_init = 1e-4
+    lr_init = 5e-5
     lr_step_multiplier = 1.0
     epochs_until_lr_step = 150
     num_epochs = args.epochs

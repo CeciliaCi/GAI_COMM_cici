@@ -251,6 +251,21 @@ conda run -n dmce python plot/plot_offgrid_doppler_magnitude.py \
 results/offgrid_doppler_magnitude/
 ```
 
+### 角域能量集中度分析
+
+比较 Urban 与 DenseUrban 信道在 2D FFT 角域中的能量集中程度：
+
+```bash
+conda run -n dmce python scripts/analyze_angular_concentration.py
+```
+
+脚本默认报告 top-k 能量占比、effective bins，以及达到 90%/95% 能量所需的角域 bin 数。若需要保存汇总 CSV：
+
+```bash
+conda run -n dmce python scripts/analyze_angular_concentration.py \
+  --output results/angular_concentration/urban_denseurban_summary.csv
+```
+
 ## 常用结果目录
 
 ```text
